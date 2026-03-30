@@ -65,9 +65,9 @@ Use `<h4>`. Render the state machine as an **inline SVG horizontal swimlane diag
 - **Content area** (x=130..end): nodes and connections
 
 **Lane rows** (equal height, ~160px each):
-- Row 1 — **操作**: manual triggers or actor actions (e.g. 新增用户, 续费, 审核通过)
-- Row 2 — **状态**: system states the entity can be in (e.g. 存续, 已过期, 已禁用)
-- Row 3 — **事件**: time-based or system-triggered events (e.g. 到有效期, 支付成功)
+- Row 1 — **操作**: manual triggers or actor actions (e.g. 提交订单, 确认收货, 申请退款)
+- Row 2 — **状态**: system states the entity can be in (e.g. 待支付, 已发货, 已完成)
+- Row 3 — **事件**: time-based or system-triggered events (e.g. 支付成功, 超时未支付, 物流签收)
 
 **Node style**: rounded rectangle, fill `#dde8f5`, stroke `#aaa`, rx=6, width≈100, height=36. Text centered inside.
 
@@ -106,37 +106,37 @@ Use `<h4>`. Render the state machine as an **inline SVG horizontal swimlane diag
   <text x="90" y="405" text-anchor="middle" fill="#333">事件</text>
 
   <!-- NODES — adjust cx/cy per actual states -->
-  <!-- 操作 lane (cy≈80):  新增, 续费, etc. -->
+  <!-- 操作 lane (cy≈80):  提交订单, 确认收货, etc. -->
   <rect x="130" y="62" width="100" height="36" rx="6" fill="#dde8f5" stroke="#aaa"/>
-  <text x="180" y="85" text-anchor="middle" fill="#222">新增用户</text>
+  <text x="180" y="85" text-anchor="middle" fill="#222">提交订单</text>
 
   <rect x="700" y="62" width="100" height="36" rx="6" fill="#dde8f5" stroke="#aaa"/>
-  <text x="750" y="85" text-anchor="middle" fill="#222">续费</text>
+  <text x="750" y="85" text-anchor="middle" fill="#222">确认收货</text>
 
   <!-- 状态 lane (cy≈240): states -->
   <rect x="270" y="222" width="100" height="36" rx="6" fill="#dde8f5" stroke="#aaa"/>
-  <text x="320" y="245" text-anchor="middle" fill="#222">存续</text>
+  <text x="320" y="245" text-anchor="middle" fill="#222">待支付</text>
 
   <rect x="560" y="222" width="100" height="36" rx="6" fill="#dde8f5" stroke="#aaa"/>
-  <text x="610" y="245" text-anchor="middle" fill="#222">已过期</text>
+  <text x="610" y="245" text-anchor="middle" fill="#222">已发货</text>
 
   <rect x="830" y="222" width="100" height="36" rx="6" fill="#dde8f5" stroke="#aaa"/>
-  <text x="880" y="245" text-anchor="middle" fill="#222">存续</text>
+  <text x="880" y="245" text-anchor="middle" fill="#222">已完成</text>
 
   <!-- 事件 lane (cy≈400): events -->
   <rect x="410" y="382" width="100" height="36" rx="6" fill="#dde8f5" stroke="#aaa"/>
-  <text x="460" y="405" text-anchor="middle" fill="#222">到有效期</text>
+  <text x="460" y="405" text-anchor="middle" fill="#222">支付成功</text>
 
   <!-- CONNECTIONS — orthogonal routing: H then V, or V then H -->
-  <!-- 新增用户 → 存续: right edge(230,80) → H to 270 → V to 240 -->
+  <!-- 提交订单 → 待支付: right edge(230,80) → H to 270 → V to 240 -->
   <path d="M 230 80 H 270 V 240" stroke="#333" fill="none" stroke-width="1.5" marker-end="url(#arr)"/>
-  <!-- 存续 → 到有效期: bottom(320,258) → V to 400 → H to 410 -->
+  <!-- 待支付 → 支付成功: bottom(320,258) → V to 400 → H to 410 -->
   <path d="M 320 258 V 400 H 410" stroke="#333" fill="none" stroke-width="1.5" marker-end="url(#arr)"/>
-  <!-- 到有效期 → 已过期: right(510,400) → H to 560 → V to 240 -->
+  <!-- 支付成功 → 已发货: right(510,400) → H to 560 → V to 240 -->
   <path d="M 510 400 H 560 V 240" stroke="#333" fill="none" stroke-width="1.5" marker-end="url(#arr)"/>
-  <!-- 已过期 → 续费: top(610,222) → V to 80 → H to 700 -->
+  <!-- 已发货 → 确认收货: top(610,222) → V to 80 → H to 700 -->
   <path d="M 610 222 V 80 H 700" stroke="#333" fill="none" stroke-width="1.5" marker-end="url(#arr)"/>
-  <!-- 续费 → 存续(final): right(800,80) → H to 880 → V to 222 -->
+  <!-- 确认收货 → 已完成: right(800,80) → H to 880 → V to 222 -->
   <path d="M 800 80 H 880 V 222" stroke="#333" fill="none" stroke-width="1.5" marker-end="url(#arr)"/>
 </svg>
 ```
@@ -199,7 +199,7 @@ Describe:
 - Edge cases and exception handling
 
 **Include concrete examples** to illustrate the logic. For instance:
-> 例：用户A在2026-01-01创建了一张有效期为90天的证书，系统自动计算到期日为2026-04-01。到期前15天（2026-03-17）系统触发续费提醒通知。若用户未续费，到期当天状态自动变更为"已过期"，关联的API访问权限同步失效。
+> 例：用户A在2026-01-01提交了一笔订单（含3件商品，总金额￥299），系统生成待支付订单并锁定库存。若30分钟内未完成支付，系统自动关闭订单并释放库存。支付成功后订单状态变更为"待发货"，同时扣减库存、生成支付流水。商家发货后状态变更为"已发货"，用户确认收货或发货后15天系统自动确认收货，订单状态变为"已完成"，触发佣金结算。
 
 ## Generation Rules
 
