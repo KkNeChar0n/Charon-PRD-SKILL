@@ -17,9 +17,11 @@ The user's requirement description: $ARGUMENTS
 
 1. **Format**: Generate a single `.html` file and save it to the current working directory.
 2. **Compatibility**: The HTML must be clean, using only standard HTML tags (no custom components, no JavaScript, no external CSS links). It should paste cleanly into Yuque (语雀), Feishu (飞书), Shimo (石墨文档), Notion, and similar online editors.
-3. **Styling**: Use inline styles only for non-table elements (headings, paragraphs, lists, layout). Keep styles minimal — mainly for spacing and readability. Use a clean, professional look with:
+3. **Styling**: Use inline styles only. Keep styles minimal — mainly for tables, spacing, and readability. Use a clean, professional look with:
    - Font: system default sans-serif
-   - **Tables: Do NOT add any inline styles to `<table>`, `<thead>`, `<tbody>`, `<tr>`, `<th>`, or `<td>` tags.** Keep tables as pure semantic HTML with no `style` attribute at all. This ensures that when pasted into Feishu (飞书), the tables render as Feishu's native table plugin format instead of Excel-embedded objects. Feishu's rich text parser converts clean, unstyled HTML tables into its native table component automatically.
+   - Table borders: `1px solid #e0e0e0`, collapsed
+   - Table header: light gray background `#f5f5f5`
+   - Proper padding and margins
    - Mindmap / architecture diagram: use a nested list with indentation styling to simulate a tree structure
 
 ## Document Structure (STRICTLY follow this order)
@@ -208,7 +210,7 @@ Describe:
 3. **Professional language**: Write in Chinese (简体中文) as this is for Chinese product teams. Use professional product terminology.
 4. **File naming**: Save the file as `PRD_<short_name>.html` where `<short_name>` is a brief identifier derived from the requirement (use Chinese or English, keep it concise).
 5. **Self-contained**: The HTML file must be completely self-contained with all styles inline. No external dependencies.
-6. **Tables must be well-formatted**: Use proper `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>` structure. **Do NOT add any `style` attribute to any table element** — keep tables as pure unstyled semantic HTML so Feishu can convert them to native tables.
+6. **Tables must be well-formatted**: Use proper `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>` structure.
 7. **Ask if needed**: If the user's input is too vague to generate a meaningful PRD, ask clarifying questions before generating. But prefer generating with reasonable assumptions over asking too many questions.
 
 ## HTML Template Reference
@@ -250,21 +252,21 @@ Use this as a starting structure:
 </div>
 
 <h3>功能清单</h3>
-<table>
+<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
   <thead>
-    <tr>
-      <th>编号</th>
-      <th>名称</th>
-      <th>类型</th>
-      <th>说明</th>
+    <tr style="background: #f5f5f5;">
+      <th style="border: 1px solid #e0e0e0; padding: 10px 12px; text-align: left;">编号</th>
+      <th style="border: 1px solid #e0e0e0; padding: 10px 12px; text-align: left;">名称</th>
+      <th style="border: 1px solid #e0e0e0; padding: 10px 12px; text-align: left;">类型</th>
+      <th style="border: 1px solid #e0e0e0; padding: 10px 12px; text-align: left;">说明</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>1</td>
-      <td>...</td>
-      <td>新增</td>
-      <td>...</td>
+      <td style="border: 1px solid #e0e0e0; padding: 10px 12px;">1</td>
+      <td style="border: 1px solid #e0e0e0; padding: 10px 12px;">...</td>
+      <td style="border: 1px solid #e0e0e0; padding: 10px 12px;">新增</td>
+      <td style="border: 1px solid #e0e0e0; padding: 10px 12px;">...</td>
     </tr>
   </tbody>
 </table>
