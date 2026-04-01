@@ -1,4 +1,4 @@
-# Charon-PRD-SKILL
+# PRD-SKILL
 
 一个 Claude Code 技能插件，用于生成专业的 PRD（产品需求文档），输出为纯净的 HTML 格式。
 
@@ -32,8 +32,8 @@
 ## 安装
 
 ```bash
-git clone git@github.com:KkNeChar0n/Charon-PRD-SKILL.git
-cd Charon-PRD-SKILL
+git clone git@github.com:KkNeChar0n/PRD-SKILL.git
+cd PRD-SKILL
 chmod +x install.sh
 ./install.sh
 ```
@@ -41,7 +41,7 @@ chmod +x install.sh
 ## 卸载
 
 ```bash
-cd Charon-PRD-SKILL
+cd PRD-SKILL
 chmod +x uninstall.sh
 ./uninstall.sh
 ```

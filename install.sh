@@ -1,5 +1,5 @@
 #!/bin/bash
-# Charon-PRD-SKILL Installer
+# PRD-SKILL Installer
 # Installs the PRD skill for Claude Code
 
 set -e
@@ -7,7 +7,7 @@ set -e
 SKILL_DIR="$HOME/.claude/skills/prd"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "Installing Charon-PRD-SKILL..."
+echo "Installing PRD-SKILL..."
 
 # Create target directory
 mkdir -p "$SKILL_DIR"

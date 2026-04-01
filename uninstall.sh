@@ -1,11 +1,11 @@
 #!/bin/bash
-# Charon-PRD-SKILL Uninstaller
+# PRD-SKILL Uninstaller
 
 set -e
 
 SKILL_DIR="$HOME/.claude/skills/prd"
 
-echo "Uninstalling Charon-PRD-SKILL..."
+echo "Uninstalling PRD-SKILL..."
 
 if [ -d "$SKILL_DIR" ]; then
   rm -rf "$SKILL_DIR"
