@@ -1,21 +1,30 @@
 #!/bin/bash
 # PRD-SKILL Installer
-# Installs the PRD skill for Claude Code
+# 安装 prd / prd-feishu-init / prd-feishu 三个 skill 到 Claude Code
 
 set -e
 
-SKILL_DIR="$HOME/.claude/skills/prd"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILLS_ROOT="$HOME/.claude/skills"
 
-echo "Installing PRD-SKILL..."
+echo "Installing PRD-SKILL bundle (3 skills)..."
 
-# Create target directory
-mkdir -p "$SKILL_DIR"
+for s in prd prd-feishu-init prd-feishu; do
+  SRC="$SCRIPT_DIR/skills/$s/SKILL.md"
+  DEST_DIR="$SKILLS_ROOT/$s"
+  if [ ! -f "$SRC" ]; then
+    echo "  ✗ 缺少源文件 $SRC"
+    continue
+  fi
+  mkdir -p "$DEST_DIR"
+  cp "$SRC" "$DEST_DIR/SKILL.md"
+  echo "  ✓ Installed: $DEST_DIR/SKILL.md"
+done
 
-# Copy skill file
-cp "$SCRIPT_DIR/skills/prd/SKILL.md" "$SKILL_DIR/SKILL.md"
-
-echo "Done! PRD skill installed to $SKILL_DIR"
 echo ""
-echo "Usage: In Claude Code, type /prd followed by your requirement description."
-echo "Example: /prd 用户管理系统"
+echo "Done!"
+echo ""
+echo "Usage:"
+echo "  /prd <需求描述>             — 生成 HTML 格式 PRD（含内联编辑器）"
+echo "  /prd-feishu-init            — 一次性初始化飞书自建应用凭证"
+echo "  /prd-feishu <需求描述>      — 生成 PRD 并直接发布到飞书云文档"
