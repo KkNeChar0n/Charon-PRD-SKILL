@@ -16,13 +16,14 @@ The user's requirement description: $ARGUMENTS
 ## Output Requirements
 
 1. **Format**: Generate a single `.html` file and save it to the current working directory.
-2. **Compatibility**: The HTML must be clean, using only standard HTML tags (no custom components, no JavaScript, no external CSS links). It should paste cleanly into Yuque (语雀), Feishu (飞书), Shimo (石墨文档), Notion, and similar online editors.
+2. **Compatibility**: The main document body uses only standard HTML tags (no custom components, no external CSS links). It pastes cleanly into Yuque (语雀), Feishu (飞书), Shimo (石墨文档), Notion, and similar online editors. The inline editor toolbar (see #4) is the **only** allowed JavaScript and is auto-stripped when the user clicks "保存为 HTML" so the saved file remains paste-clean.
 3. **Styling**: Use inline styles only. Keep styles minimal — mainly for tables, spacing, and readability. Use a clean, professional look with:
    - Font: system default sans-serif
    - Table borders: `1px solid #e0e0e0`, collapsed
    - Table header: light gray background `#f5f5f5`
    - Proper padding and margins
    - Mindmap / architecture diagram: use a nested list with indentation styling to simulate a tree structure
+4. **Inline Editor Toolbar (mandatory)**: Every generated PRD must include the inline editor toolbar block (see "Inline Editor Toolbar" section at the bottom). This gives the product manager in-browser click-to-edit on text + a "保存为 HTML" button that downloads the edited HTML so they can overwrite the original file. Without this block the PRD is considered incomplete.
 
 ## Document Structure (STRICTLY follow this order)
 
@@ -274,6 +275,112 @@ Use this as a starting structure:
 <h2>需求详述</h2>
 <!-- Repeat for each feature -->
 
+<!-- ===== 内联编辑器（详见下一节，必须放在 </body> 前） ===== -->
+
 </body>
 </html>
 ```
+
+## Inline Editor Toolbar (mandatory block)
+
+**Insert the following block verbatim immediately before `</body>` in every generated PRD.** It gives the PM in-browser click-to-edit + a one-click "保存为 HTML" download. The block is self-contained: no external dependencies, no impact on the document body's paste-cleanness because the toolbar removes itself when saving.
+
+```html
+<!-- ===== PRD 内联编辑器（点击文字即可改，右上角保存为 HTML）===== -->
+<style data-prd-tool>
+  [contenteditable="true"]:hover { background: #fffbe6 !important; outline: 1px dashed #faad14 !important; cursor: text; }
+  [contenteditable="true"]:focus { background: #fff9c4 !important; outline: 2px solid #1890ff !important; }
+  #prd-toolbar { position: fixed; top: 16px; right: 16px; background: rgba(255,255,255,0.96); border: 1px solid #e0e0e0; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); padding: 8px 12px; z-index: 9999; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  #prd-toolbar button { background: #1890ff; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  #prd-toolbar button.secondary { background: #fff; color: #555; border: 1px solid #d9d9d9; }
+  #prd-toolbar button:hover { opacity: 0.85; }
+  #prd-status { color: #888; font-size: 12px; }
+  #prd-status.dirty { color: #fa8c16; font-weight: 600; }
+  #prd-status.saved { color: #52c41a; }
+  @media print { #prd-toolbar { display: none !important; } }
+</style>
+<div id="prd-toolbar">
+  <button onclick="prdSave()" title="下载当前修改后的 HTML 文件（可覆盖原文件）">💾 保存为 HTML</button>
+  <button class="secondary" onclick="prdReset()" title="清除浏览器本地缓存，恢复到原始内容">🔄 重置</button>
+  <span id="prd-status">就绪</span>
+</div>
+<script data-prd-tool>
+(() => {
+  const STORAGE_KEY = 'prd-' + location.pathname;
+  const status = () => document.getElementById('prd-status');
+  const setStatus = (text, cls) => { const s = status(); if (s) { s.textContent = text; s.className = cls || ''; } };
+
+  function enableEditing() {
+    document.querySelectorAll('h1, h2, h3, h4, h5, p, li, blockquote, td').forEach(el => {
+      if (el.closest('#prd-toolbar')) return;
+      el.setAttribute('contenteditable', 'true');
+      el.setAttribute('spellcheck', 'false');
+    });
+  }
+
+  function restoreFromCache() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return false;
+    try {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = saved;
+      [...document.body.children].forEach(el => { if (el.id !== 'prd-toolbar') el.remove(); });
+      const tb = document.getElementById('prd-toolbar');
+      [...tmp.children].forEach(el => document.body.insertBefore(el, tb));
+      return true;
+    } catch (e) { console.error('恢复失败', e); return false; }
+  }
+
+  window.prdSave = function() {
+    const clone = document.documentElement.cloneNode(true);
+    clone.querySelectorAll('#prd-toolbar, [data-prd-tool]').forEach(el => el.remove());
+    clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+    clone.querySelectorAll('[spellcheck]').forEach(el => el.removeAttribute('spellcheck'));
+    const html = '<!DOCTYPE html>\n' + clone.outerHTML;
+    const cleanHtml = html.replace(/\n\s*<!-- ===== PRD 内联编辑器[^>]*-->\s*\n?/g, '\n');
+    const blob = new Blob([cleanHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (location.pathname.split('/').pop() || 'prd.html');
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus('已下载，可覆盖原文件', 'saved');
+  };
+
+  window.prdReset = function() {
+    if (!confirm('清除浏览器本地缓存？\n所有未通过「保存为 HTML」下载的修改将丢失。')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  };
+
+  let dirtyTimer = null;
+  window.addEventListener('DOMContentLoaded', () => {
+    const restored = restoreFromCache();
+    enableEditing();
+    if (restored) setStatus('已恢复本地缓存（未下载的修改）', 'dirty');
+
+    document.body.addEventListener('input', (e) => {
+      if (e.target.closest('#prd-toolbar')) return;
+      const content = [...document.body.children]
+        .filter(el => el.id !== 'prd-toolbar')
+        .map(el => el.outerHTML).join('\n');
+      try { localStorage.setItem(STORAGE_KEY, content); } catch (e) {}
+      clearTimeout(dirtyTimer);
+      setStatus('编辑中…', 'dirty');
+      dirtyTimer = setTimeout(() => setStatus('已自动暂存到本地缓存（请点「保存为 HTML」下载）', 'dirty'), 600);
+    });
+  });
+})();
+</script>
+```
+
+**How it works for the user:**
+- Hover any heading / paragraph / list item / blockquote / table cell → yellow dashed outline shows "click to edit".
+- Click → enters edit mode (blue border). Type to modify.
+- Auto-save: each keystroke saves to `localStorage` (key = pathname). Closing and reopening the file restores the in-progress edits.
+- Click **💾 保存为 HTML** in the top-right toolbar → downloads a clean copy of the modified HTML to the user's Downloads folder. User can manually move it back to overwrite the original file.
+- Click **🔄 重置** → clears localStorage and reloads, returning to the original file content.
+- Toolbar is hidden in print preview (`@media print`) and is auto-stripped from the saved file (so pasted-to-Yuque/Feishu output is clean).
+
+**Only these tags become editable**: `h1, h2, h3, h4, h5, p, li, blockquote, td`. Visual container divs, SVGs, table headers (`th`), and other structural elements remain untouched to preserve the layout when users only intend to edit text.
