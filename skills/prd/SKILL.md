@@ -23,7 +23,7 @@ The user's requirement description: $ARGUMENTS
    - Table header: light gray background `#f5f5f5`
    - Proper padding and margins
    - Mindmap / architecture diagram: use a nested list with indentation styling to simulate a tree structure
-4. **Inline Editor Toolbar (mandatory)**: Every generated PRD must include the inline editor toolbar block (see "Inline Editor Toolbar" section at the bottom). This gives the product manager in-browser click-to-edit on text + a "保存为 HTML" button that downloads the edited HTML so they can overwrite the original file. Without this block the PRD is considered incomplete.
+4. **Inline Editor Toolbar (mandatory)**: Every generated PRD must include the inline editor toolbar block (see "Inline Editor Toolbar" section at the bottom). The default page is plain HTML (Cmd+A works normally). The toolbar's 「🖊 编辑」 button enables edit mode; in edit mode the user can click text to modify it, then 「💾 保存」 uses File System Access API to overwrite the original file directly (no download step). Without this block the PRD is considered incomplete.
 
 ## Document Structure (STRICTLY follow this order)
 
@@ -283,13 +283,13 @@ Use this as a starting structure:
 
 ## Inline Editor Toolbar (mandatory block)
 
-**Insert the following block verbatim immediately before `</body>` in every generated PRD.** It gives the PM in-browser click-to-edit + a one-click "保存为 HTML" download. The block is self-contained: no external dependencies, no impact on the document body's paste-cleanness because the toolbar removes itself when saving.
+**Insert the following block verbatim immediately before `</body>` in every generated PRD.** Default state is plain HTML so Cmd+A select-all and copy work normally. The toolbar's 「🖊 编辑」 button enters edit mode; 「💾 保存」 uses File System Access API to overwrite the original file directly. The block is self-contained — no external dependencies; all toolbar markers (`data-prd-tool`, `data-prd-editable`, `#prd-toolbar`) are stripped when saving so the saved file is paste-clean for Yuque / Feishu.
 
 ```html
-<!-- ===== PRD 内联编辑器（点击文字即可改，右上角保存为 HTML）===== -->
+<!-- ===== PRD 内联编辑器 v2（默认只读，点编辑后才可改，保存直接覆盖原文件）===== -->
 <style data-prd-tool>
-  [contenteditable="true"]:hover { background: #fffbe6 !important; outline: 1px dashed #faad14 !important; cursor: text; }
-  [contenteditable="true"]:focus { background: #fff9c4 !important; outline: 2px solid #1890ff !important; }
+  body.prd-editing [data-prd-editable]:hover { background: #fffbe6 !important; outline: 1px dashed #faad14 !important; cursor: text; }
+  body.prd-editing [data-prd-editable]:focus { background: #fff9c4 !important; outline: 2px solid #1890ff !important; }
   #prd-toolbar { position: fixed; top: 16px; right: 16px; background: rgba(255,255,255,0.96); border: 1px solid #e0e0e0; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); padding: 8px 12px; z-index: 9999; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; display: flex; align-items: center; gap: 8px; }
   #prd-toolbar button { background: #1890ff; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
   #prd-toolbar button.secondary { background: #fff; color: #555; border: 1px solid #d9d9d9; }
@@ -300,87 +300,127 @@ Use this as a starting structure:
   @media print { #prd-toolbar { display: none !important; } }
 </style>
 <div id="prd-toolbar">
-  <button onclick="prdSave()" title="下载当前修改后的 HTML 文件（可覆盖原文件）">💾 保存为 HTML</button>
-  <button class="secondary" onclick="prdReset()" title="清除浏览器本地缓存，恢复到原始内容">🔄 重置</button>
-  <span id="prd-status">就绪</span>
+  <button id="prd-edit-btn" onclick="prdEnterEdit()" title="点击进入编辑模式">🖊 编辑</button>
+  <button id="prd-save-btn" onclick="prdSave()" title="保存并直接覆盖原文件（首次需选择文件位置授权）" style="display:none;">💾 保存</button>
+  <button id="prd-cancel-btn" class="secondary" onclick="prdCancelEdit()" title="放弃修改并退出编辑" style="display:none;">↩ 取消</button>
+  <span id="prd-status"></span>
 </div>
 <script data-prd-tool>
 (() => {
-  const STORAGE_KEY = 'prd-' + location.pathname;
-  const status = () => document.getElementById('prd-status');
-  const setStatus = (text, cls) => { const s = status(); if (s) { s.textContent = text; s.className = cls || ''; } };
+  let fileHandle = null;        // File System Access API handle，同会话复用
+  let originalSnapshot = null;  // 进入编辑前 body 的快照（用于取消还原）
 
-  function enableEditing() {
+  const $ = id => document.getElementById(id);
+  const setStatus = (text, cls) => { const s = $('prd-status'); if (s) { s.textContent = text || ''; s.className = cls || ''; } };
+
+  function markEditables() {
     document.querySelectorAll('h1, h2, h3, h4, h5, p, li, blockquote, td').forEach(el => {
       if (el.closest('#prd-toolbar')) return;
-      el.setAttribute('contenteditable', 'true');
-      el.setAttribute('spellcheck', 'false');
+      el.setAttribute('data-prd-editable', '');
     });
   }
 
-  function restoreFromCache() {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return false;
-    try {
-      const tmp = document.createElement('div');
-      tmp.innerHTML = saved;
-      [...document.body.children].forEach(el => { if (el.id !== 'prd-toolbar') el.remove(); });
-      const tb = document.getElementById('prd-toolbar');
-      [...tmp.children].forEach(el => document.body.insertBefore(el, tb));
-      return true;
-    } catch (e) { console.error('恢复失败', e); return false; }
+  function setEditing(on) {
+    document.body.classList.toggle('prd-editing', on);
+    $('prd-edit-btn').style.display = on ? 'none' : '';
+    $('prd-save-btn').style.display = on ? '' : 'none';
+    $('prd-cancel-btn').style.display = on ? '' : 'none';
+    document.querySelectorAll('[data-prd-editable]').forEach(el => {
+      if (on) {
+        el.setAttribute('contenteditable', 'true');
+        el.setAttribute('spellcheck', 'false');
+      } else {
+        el.removeAttribute('contenteditable');
+        el.removeAttribute('spellcheck');
+      }
+    });
   }
 
-  window.prdSave = function() {
+  window.prdEnterEdit = function() {
+    originalSnapshot = [...document.body.children]
+      .filter(el => el.id !== 'prd-toolbar')
+      .map(el => el.outerHTML).join('\n');
+    setEditing(true);
+    setStatus('编辑中…（点保存或取消退出）', 'dirty');
+  };
+
+  window.prdCancelEdit = function() {
+    if (!confirm('放弃当前修改？所有未保存的内容将丢失。')) return;
+    [...document.body.children].forEach(el => { if (el.id !== 'prd-toolbar') el.remove(); });
+    const tmp = document.createElement('div');
+    tmp.innerHTML = originalSnapshot;
+    const tb = $('prd-toolbar');
+    [...tmp.children].forEach(el => document.body.insertBefore(el, tb));
+    markEditables();
+    setEditing(false);
+    setStatus('已取消修改', '');
+  };
+
+  function generateCleanHtml() {
     const clone = document.documentElement.cloneNode(true);
     clone.querySelectorAll('#prd-toolbar, [data-prd-tool]').forEach(el => el.remove());
     clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
     clone.querySelectorAll('[spellcheck]').forEach(el => el.removeAttribute('spellcheck'));
+    clone.querySelectorAll('[data-prd-editable]').forEach(el => el.removeAttribute('data-prd-editable'));
+    const body = clone.querySelector('body');
+    if (body) body.classList.remove('prd-editing');
     const html = '<!DOCTYPE html>\n' + clone.outerHTML;
-    const cleanHtml = html.replace(/\n\s*<!-- ===== PRD 内联编辑器[^>]*-->\s*\n?/g, '\n');
-    const blob = new Blob([cleanHtml], { type: 'text/html;charset=utf-8' });
+    return html.replace(/\n\s*<!-- ===== PRD 内联编辑器[^>]*-->\s*\n?/g, '\n');
+  }
+
+  window.prdSave = async function() {
+    const html = generateCleanHtml();
+    const filename = (location.pathname.split('/').pop() || 'prd.html');
+    if ('showSaveFilePicker' in window) {
+      try {
+        if (!fileHandle) {
+          fileHandle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{ description: 'HTML', accept: { 'text/html': ['.html'] } }],
+          });
+        }
+        const writable = await fileHandle.createWritable();
+        await writable.write(html);
+        await writable.close();
+        setEditing(false);
+        setStatus('✓ 已保存到原文件', 'saved');
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') { setStatus('保存已取消', 'dirty'); return; }
+        console.error('FS API failed', e);
+        alert('直接覆盖失败：' + (e && e.message || e) + '\n\n将以下载方式保存，请手动覆盖原文件。');
+      }
+    }
+    // Fallback：下载文件（非 Chrome/Edge 或 FS API 抛错时）
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = (location.pathname.split('/').pop() || 'prd.html');
+    a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setStatus('已下载，可覆盖原文件', 'saved');
+    setEditing(false);
+    setStatus('已下载（请手动覆盖原文件）', 'saved');
   };
 
-  window.prdReset = function() {
-    if (!confirm('清除浏览器本地缓存？\n所有未通过「保存为 HTML」下载的修改将丢失。')) return;
-    localStorage.removeItem(STORAGE_KEY);
-    location.reload();
-  };
-
-  let dirtyTimer = null;
-  window.addEventListener('DOMContentLoaded', () => {
-    const restored = restoreFromCache();
-    enableEditing();
-    if (restored) setStatus('已恢复本地缓存（未下载的修改）', 'dirty');
-
-    document.body.addEventListener('input', (e) => {
-      if (e.target.closest('#prd-toolbar')) return;
-      const content = [...document.body.children]
-        .filter(el => el.id !== 'prd-toolbar')
-        .map(el => el.outerHTML).join('\n');
-      try { localStorage.setItem(STORAGE_KEY, content); } catch (e) {}
-      clearTimeout(dirtyTimer);
-      setStatus('编辑中…', 'dirty');
-      dirtyTimer = setTimeout(() => setStatus('已自动暂存到本地缓存（请点「保存为 HTML」下载）', 'dirty'), 600);
-    });
-  });
+  window.addEventListener('DOMContentLoaded', () => { markEditables(); });
 })();
 </script>
 ```
 
 **How it works for the user:**
-- Hover any heading / paragraph / list item / blockquote / table cell → yellow dashed outline shows "click to edit".
-- Click → enters edit mode (blue border). Type to modify.
-- Auto-save: each keystroke saves to `localStorage` (key = pathname). Closing and reopening the file restores the in-progress edits.
-- Click **💾 保存为 HTML** in the top-right toolbar → downloads a clean copy of the modified HTML to the user's Downloads folder. User can manually move it back to overwrite the original file.
-- Click **🔄 重置** → clears localStorage and reloads, returning to the original file content.
-- Toolbar is hidden in print preview (`@media print`) and is auto-stripped from the saved file (so pasted-to-Yuque/Feishu output is clean).
+- Default state: plain HTML. Cmd+A select-all, mouse-drag select, browser find-in-page — all work normally because no `contenteditable` is set yet.
+- Click **🖊 编辑** in the top-right toolbar → enters edit mode. Hover any heading / paragraph / list item / blockquote / table cell → yellow dashed outline shows "click to edit". Click → blue border, type to modify.
+- Click **💾 保存** → uses File System Access API:
+  - **First save**: browser opens save-file dialog (suggested name = original filename). User picks the original file location → confirms overwrite → file is written directly.
+  - **Subsequent saves in same session**: writes immediately to the remembered handle, no dialog.
+  - **Browsers without FS API support** (Safari etc): falls back to downloading the file; user manually moves it to overwrite.
+- Click **↩ 取消** → confirms then restores the pre-edit snapshot. No partial saves bleed through.
+- After save/cancel, page returns to plain read-only state. Cmd+A again works.
+- Toolbar is hidden in print preview (`@media print`) and stripped from the saved file.
 
-**Only these tags become editable**: `h1, h2, h3, h4, h5, p, li, blockquote, td`. Visual container divs, SVGs, table headers (`th`), and other structural elements remain untouched to preserve the layout when users only intend to edit text.
+**Only these tags become editable in edit mode**: `h1, h2, h3, h4, h5, p, li, blockquote, td`. Visual container divs, SVGs, table headers (`th`), and other structural elements remain untouched to preserve the layout when users only intend to edit text.
+
+**Notes on File System Access API**:
+- Supported by Chrome / Edge (and Chromium-based browsers). Safari does not support it; the code falls back to download.
+- Available for `file://` and `https://` origins (you can double-click the local HTML file from Finder and it works).
+- The `fileHandle` is held in memory for the lifetime of the page. After a page reload, the user will be asked to pick the file location again on the next save (browser security; handles can't be persisted to localStorage).
