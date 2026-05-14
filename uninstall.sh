@@ -1,14 +1,14 @@
 #!/bin/bash
 # PRD-SKILL Uninstaller
-# 卸载 prd / prd-feishu-init / prd-feishu 三个 skill
+# 卸载 prd / prd-feishu-init / prd-feishu / prd-feishu-batch 四个 skill
 
 set -e
 
 SKILLS_ROOT="$HOME/.claude/skills"
 
-echo "Uninstalling PRD-SKILL bundle (3 skills)..."
+echo "Uninstalling PRD-SKILL bundle (4 skills)..."
 
-for s in prd prd-feishu-init prd-feishu; do
+for s in prd prd-feishu-init prd-feishu prd-feishu-batch; do
   D="$SKILLS_ROOT/$s"
   if [ -d "$D" ]; then
     rm -rf "$D"
