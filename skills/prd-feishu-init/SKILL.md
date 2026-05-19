@@ -85,6 +85,20 @@ echo "$RESP"
 
 验证成功才进入下一步。
 
+### 步骤 3.5：验证 folder_token（如果用户填了）
+
+```bash
+# 试探性创建一个名为 "_perm_test_可删除" 的空文档到该文件夹
+TEST_RESP=$(curl -s -X POST "https://$DOMAIN/open-apis/docx/v1/documents" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d "{\"title\":\"_perm_test_可删除\",\"folder_token\":\"$FOLDER_TOKEN\"}")
+```
+
+- 成功（code=0）：删掉测试文档（DELETE /open-apis/drive/v1/files/{token}），继续步骤 4
+- 失败 `1770040 no folder permission`：提示用户「该文件夹未授权给应用，请去飞书云空间打开该文件夹 → 分享 → 协作者管理 → 添加应用名为协作者并赋『可编辑』权限。完成后告诉我重试」。**不要写入 config，让用户处理完再重跑**。
+- 失败 `1061004 forbidden`：folder_token 错误或文件夹已删除，提示用户重新填写
+
 ### 步骤 4：写入配置
 
 ```bash

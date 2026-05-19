@@ -570,18 +570,25 @@ elif parent_node:
 # ---------------- 12. 自动同步到云效需求描述 ----------------
 print('\n[云效] 同步飞书 URL 到对应需求描述 ...')
 
-def _find_aliyuncs_cfg(start_path):
-    """向上查找最近的 .aliyuncs.json"""
-    p = Path(start_path).resolve().parent
-    while True:
-        c = p / '.aliyuncs.json'
-        if c.exists():
-            return c
-        if p == p.parent:
-            return None
-        p = p.parent
+def _find_aliyuncs_cfg(start_paths):
+    """从一组起点向上查找最近的 .aliyuncs.json"""
+    for start in start_paths:
+        if not start:
+            continue
+        p = Path(start).resolve()
+        if p.is_file():
+            p = p.parent
+        while True:
+            c = p / '.aliyuncs.json'
+            if c.exists():
+                return c
+            if p == p.parent:
+                break
+            p = p.parent
+    return None
 
-_acfg_path = _find_aliyuncs_cfg(HTML_PATH)
+# 找配置文件：先 HTML 所在路径向上，再 cwd 向上（HTML 可能在 /tmp，aliyuncs 在项目目录）
+_acfg_path = _find_aliyuncs_cfg([HTML_PATH, Path.cwd()])
 if not _acfg_path:
     print('  跳过：未找到 .aliyuncs.json（HTML 路径附近向上无云效配置）')
 else:

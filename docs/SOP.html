@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Vibe Coding 协作 SOP</title>
+</head>
+<body>
+
+<h1>Vibe Coding 协作 SOP</h1>
+
+<h2>一、总览</h2>
+
+<h3>1.1 目的</h3>
+<p>在公司 Vibe Coding（AI 辅助研发）模式已基本成熟的前提下，固化"需求 → 研发 → 测试 → 验收"四阶段协作流程，明确每一步的负责人、产出物、完成判定以及 AI 介入方式，让 AI 工具（Claude Code + Skill）成为流程的一部分而不是临时辅助。</p>
+
+<h3>1.2 适用范围</h3>
+<ul>
+<li>所有走云效（阿里云效）管理的需求与迭代</li>
+<li>PRD 在飞书云文档承载</li>
+<li>代码托管在公司 Git 仓库，使用 Claude Code 进行 AI 辅助编码</li>
+</ul>
+
+<h3>1.3 角色与 RACI</h3>
+<table>
+<thead>
+<tr><th>阶段</th><th>产品</th><th>研发</th><th>测试</th><th>研发 Leader</th></tr>
+</thead>
+<tbody>
+<tr><td>需求</td><td>R / A</td><td>C</td><td>C</td><td>I</td></tr>
+<tr><td>研发</td><td>C</td><td>R</td><td>I</td><td>A</td></tr>
+<tr><td>测试</td><td>C</td><td>C</td><td>R / A</td><td>I</td></tr>
+<tr><td>验收</td><td>R / A</td><td>C</td><td>C</td><td>I</td></tr>
+</tbody>
+</table>
+<p>R = Responsible 执行人；A = Accountable 最终负责；C = Consulted 咨询；I = Informed 知会。</p>
+
+<h3>1.4 阶段流程一览</h3>
+<table>
+<thead>
+<tr><th>阶段</th><th>主负责</th><th>关键产出</th><th>进入下一阶段的条件</th></tr>
+</thead>
+<tbody>
+<tr><td>1. 需求</td><td>产品</td><td>云效迭代/需求、飞书 PRD、评审纪要</td><td>PRD 通过三方评审、需求状态置为"待研发"</td></tr>
+<tr><td>2. 研发</td><td>研发</td><td>研发任务、设计文档、代码、PR、提测单</td><td>代码合并主干、提测单提交、研发任务置为"已提测"</td></tr>
+<tr><td>3. 测试</td><td>测试</td><td>测试任务、用例集、测试报告</td><td>P0/P1 缺陷清零、测试任务置为"测试通过"</td></tr>
+<tr><td>4. 验收</td><td>产品</td><td>验收清单、灰度报告、回归报告</td><td>线上回归通过、需求/迭代关闭</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<h2>二、需求阶段（产品负责）</h2>
+
+<h3>2.1 云效 — 创建迭代</h3>
+<ul>
+<li><strong>触发条件</strong>：产品规划下个版本时</li>
+<li><strong>操作步骤</strong>：
+<ol>
+<li>在 Claude Code 中执行 <code>/aliyuncs:create-iteration</code></li>
+<li>命名规则自动遵循 <strong>【项目名称 V1.X.0】</strong>，版本号自增</li>
+<li>设置迭代起止时间、关联飞书父节点 URL（用于后续 PRD 自动挂载）</li>
+<li>启动迭代需在云效界面手动操作</li>
+</ol>
+</li>
+<li><strong>产出</strong>：云效迭代实体、<code>.aliyuncs.json</code> 本地登记</li>
+<li><strong>Skill</strong>：<code>aliyuncs:create-iteration</code>（已有）</li>
+<li><strong>完成判定</strong>：迭代在云效可见，飞书父节点已绑定</li>
+</ul>
+
+<h3>2.2 云效 — 创建需求</h3>
+<ul>
+<li><strong>触发条件</strong>：迭代建好后，逐条录入需求</li>
+<li><strong>操作步骤</strong>：
+<ol>
+<li>执行 <code>/aliyuncs:create-requirement</code>，按对话补全需求标题、描述、优先级、负责人</li>
+<li>Skill 自动在飞书父节点下创建空 docx 节点，并把 <code>feishu_url</code> 回写到 <code>.aliyuncs.json</code></li>
+<li>需求自动关联到当前迭代</li>
+</ol>
+</li>
+<li><strong>产出</strong>：云效需求 + 飞书空 PRD 节点</li>
+<li><strong>Skill</strong>：<code>aliyuncs:create-requirement</code>（已有）</li>
+<li><strong>完成判定</strong>：需求在云效迭代下可见，<code>.aliyuncs.json</code> 含 <code>feishu_url</code></li>
+</ul>
+
+<h3>2.3 需求调研</h3>
+<ul>
+<li><strong>负责人</strong>：产品</li>
+<li><strong>动作</strong>：
+<ul>
+<li>用户访谈 / 业务方需求收集</li>
+<li>竞品分析（同类产品功能对比）</li>
+<li>历史数据 / 客服反馈梳理</li>
+<li>形成调研纪要附在飞书 PRD 节点开头（或单独子页）</li>
+</ul>
+</li>
+<li><strong>AI 介入</strong>：直接在 Claude Code 对话中让 AI 帮忙做信息聚合、对比表整理（无需专用 skill）</li>
+<li><strong>完成判定</strong>：核心问题、目标用户、价值假设、核心场景四项明确</li>
+</ul>
+
+<h3>2.4 PRD 撰写</h3>
+<ul>
+<li><strong>负责人</strong>：产品</li>
+<li><strong>操作步骤</strong>：
+<ol>
+<li>执行 <code>/prd-feishu &lt;需求标题&gt;</code></li>
+<li>Skill 自动匹配 <code>.aliyuncs.json</code> 中的需求，定位飞书节点</li>
+<li>按统一结构生成 PRD：需求目标 / 需求简述（架构图+功能清单）/ 需求详述（状态机+原型图+逻辑补充）</li>
+<li>原型图渲染为 PNG 上传飞书</li>
+<li>自动向上回链：父节点目录追加 PRD 链接 + 需求目标摘要</li>
+</ol>
+</li>
+<li><strong>产出</strong>：飞书云文档（可协同编辑），URL 同步到云效需求描述顶部</li>
+<li><strong>Skill</strong>：<code>prd</code> + <code>prd-feishu</code>（已有）</li>
+<li><strong>写作偏好</strong>（强约束）：
+<ul>
+<li>不写"数据关系"章节（不列表名/字段映射）</li>
+<li>产品视角，不写技术实现细节</li>
+<li>严格按需求范围写，不补需求外的功能/入口</li>
+<li>没有真实状态流转就整段省略状态机</li>
+<li>评级/计算/分级要把规则讲具体</li>
+</ul>
+</li>
+<li><strong>完成判定</strong>：PRD 章节齐全，原型图覆盖所有新增/修改的页面，需求目标可在 30 秒内向新人讲清</li>
+</ul>
+
+<h3>2.5 需求评审</h3>
+<ul>
+<li><strong>参与方</strong>：产品（主讲）、研发、测试</li>
+<li><strong>动作</strong>：
+<ol>
+<li>产品提前 1 个工作日把飞书 PRD 链接发到评审群</li>
+<li>评审会上逐节走读，研发关注实现可行性，测试关注可测性</li>
+<li>会议纪要直接在飞书 PRD 末尾追加"评审记录"小节，列出：参会人、变更点、待澄清项、确认时间</li>
+</ol>
+</li>
+<li><strong>AI 介入</strong>：会前由 AI 对 PRD 做一致性自检（功能清单 vs 详述是否一一对应、原型图字段是否全在表格列出）</li>
+<li><strong>完成判定</strong>：无 P0 待澄清项，研发/测试在飞书 PRD 末尾"评审通过"勾选</li>
+</ul>
+
+<h3>2.6 阶段 DoD（Definition of Done）</h3>
+<ul>
+<li>云效需求状态：待研发</li>
+<li>飞书 PRD：评审通过</li>
+<li>云效需求描述顶部含飞书 URL</li>
+</ul>
+
+<hr>
+
+<h2>三、研发阶段（研发负责）</h2>
+
+<h3>3.1 云效 — 创建研发任务</h3>
+<ul>
+<li><strong>负责人</strong>：研发 Leader</li>
+<li><strong>操作步骤</strong>：
+<ol>
+<li>执行 <code>/aliyuncs:create-task</code>，针对每个需求拆分研发任务</li>
+<li>Skill 自动在每个任务下创建 <strong>前端 / 后端 / 测试</strong>三个子任务</li>
+<li>任务标题统一格式：<code>[需求标识] 任务名</code></li>
+</ol>
+</li>
+<li><strong>Skill</strong>：<code>aliyuncs:create-task</code>（已有）</li>
+</ul>
+
+<h3>3.2 任务分派</h3>
+<ul>
+<li><strong>负责人</strong>：研发 Leader</li>
+<li><strong>动作</strong>：在云效界面把子任务指派到具体执行人，设定预计工时</li>
+<li><strong>原则</strong>：单子任务粒度 ≤ 2 个工作日；超过则继续拆</li>
+</ul>
+
+<h3>3.3 设计文档撰写</h3>
+<ul>
+<li><strong>负责人</strong>：研发（按子任务）</li>
+<li><strong>动作</strong>：
+<ul>
+<li>简单任务：在云效任务描述里写技术思路即可</li>
+<li>跨模块 / 涉及表结构 / 涉及对外接口的任务：必须出独立设计文档，挂在飞书 PRD 子节点下</li>
+<li>设计文档内容：接口定义、数据库变更、关键时序、风险点</li>
+</ul>
+</li>
+<li><strong>AI 介入</strong>：在 Claude Code 对话中让 AI 基于 PRD + 现有代码生成设计草稿，研发审校</li>
+<li><strong>完成判定</strong>：研发 Leader 在设计文档下"已确认"</li>
+</ul>
+
+<h3>3.4 代码编写（Vibe Coding 主战场）</h3>
+<ul>
+<li><strong>负责人</strong>：研发</li>
+<li><strong>动作</strong>：
+<ol>
+<li>从主干拉特性分支 <code>feature/&lt;云效任务号&gt;-&lt;短描述&gt;</code></li>
+<li>在 Claude Code 中按设计文档驱动 AI 编码：先描述目标 → 让 AI 给方案 → 确认后实施 → 边写边跑</li>
+<li>遵循项目既有代码风格（让 AI 先读相关模块再动手）</li>
+<li>每个有意义的进展立即 commit；commit message 含云效任务号</li>
+</ol>
+</li>
+<li><strong>红线</strong>：
+<ul>
+<li>不允许 AI 直接 push 到主干</li>
+<li>不允许 AI 跳过测试 / pre-commit hook</li>
+<li>涉及密钥、生产数据库、删除/重置操作必须人工二次确认</li>
+</ul>
+</li>
+<li><strong>完成判定</strong>：本地自测通过，PR 已发起</li>
+</ul>
+
+<h3>3.5 联调</h3>
+<ul>
+<li><strong>负责人</strong>：前端 + 后端</li>
+<li><strong>动作</strong>：
+<ul>
+<li>后端先在测试环境部署接口</li>
+<li>前端按接口契约联调，问题在群里 @后端 即时反馈</li>
+<li>所有接口契约变更必须同步更新设计文档</li>
+</ul>
+</li>
+<li><strong>完成判定</strong>：所有核心链路在测试环境跑通一遍</li>
+</ul>
+
+<h3>3.6 代码 Review</h3>
+<ul>
+<li><strong>负责人</strong>：研发 Leader 或同组同事 + AI 辅助</li>
+<li><strong>操作步骤</strong>：
+<ol>
+<li>PR 发起后，PR 描述里写清：解决什么问题、关键改动、自测情况</li>
+<li>作者先在本地执行 Claude Code 内置 <code>/review</code> 做一遍 AI review，修复明显问题</li>
+<li>再请人 review；人工 review 至少 1 人 approve 才能合并</li>
+<li>合并策略：Squash and merge，合并后自动删特性分支</li>
+</ol>
+</li>
+<li><strong>Skill</strong>：内置 <code>/review</code>（已有）</li>
+<li><strong>完成判定</strong>：人工 approve + CI 全绿 + 合并主干</li>
+</ul>
+
+<h3>3.7 提测</h3>
+<ul>
+<li><strong>负责人</strong>：研发</li>
+<li><strong>动作</strong>：
+<ol>
+<li>把对应云效研发任务置为"已提测"</li>
+<li>在提测群发送提测单，内容包括：需求标识 / PR 链接 / 测试环境地址 / 影响范围 / 回归建议 / 已知风险</li>
+<li>提测前必须保证测试环境已部署最新构建</li>
+</ol>
+</li>
+<li><strong>AI 介入</strong>：让 AI 基于本次 PR diff 生成"影响范围 + 回归建议"草稿，研发补充后发出</li>
+<li><strong>完成判定</strong>：测试在提测群回复"已接收"</li>
+</ul>
+
+<h3>3.8 阶段 DoD</h3>
+<ul>
+<li>所有研发子任务在云效置为"已提测"</li>
+<li>代码已合并主干，特性分支已删</li>
+<li>提测单已发，测试已接收</li>
+</ul>
+
+<hr>
+
+<h2>四、测试阶段（测试负责）</h2>
+
+<h3>4.1 云效 — 创建测试任务</h3>
+<ul>
+<li><strong>动作</strong>：测试在需求下创建测试任务（或复用研发任务下的测试子任务）</li>
+<li><strong>Skill</strong>：复用 <code>aliyuncs:create-task</code> 的测试子任务，无需额外操作</li>
+</ul>
+
+<h3>4.2 测试用例撰写</h3>
+<ul>
+<li><strong>负责人</strong>：测试</li>
+<li><strong>动作</strong>：
+<ul>
+<li>基于飞书 PRD 编写用例，覆盖：功能正向、异常分支、边界值、权限、兼容性</li>
+<li>用例存放位置：飞书 PRD 同级或子节点的"测试用例"文档（多维表格或脑图）</li>
+</ul>
+</li>
+<li><strong>AI 介入</strong>：在 Claude Code 中把 PRD 链接交给 AI，让其生成用例草稿（测试人工补充异常场景）</li>
+<li><strong>完成判定</strong>：用例覆盖 PRD 功能清单中所有"新增/修改"条目</li>
+</ul>
+
+<h3>4.3 测试用例评审</h3>
+<ul>
+<li><strong>参与方</strong>：测试（主讲）、产品、研发</li>
+<li><strong>动作</strong>：
+<ul>
+<li>评审会走读用例，产品确认业务场景无遗漏，研发指出实现细节带来的额外测试点</li>
+<li>评审纪要追加在用例文档末尾</li>
+</ul>
+</li>
+<li><strong>完成判定</strong>：用例集"已评审通过"标记</li>
+</ul>
+
+<h3>4.4 正式测试</h3>
+<ul>
+<li><strong>负责人</strong>：测试</li>
+<li><strong>动作</strong>：
+<ol>
+<li>按用例集在测试环境执行，记录通过 / 阻塞 / 失败</li>
+<li>发现缺陷直接在云效需求下建"缺陷"工作项，关联研发任务</li>
+<li>缺陷分级：P0 阻塞主流程 / P1 核心功能异常 / P2 体验问题 / P3 文案与小问题</li>
+<li>回归测试通过后出测试报告（飞书文档），包含：执行用例数 / 通过率 / 缺陷分布 / 风险提示</li>
+</ol>
+</li>
+<li><strong>AI 介入</strong>：对于纯前端 UI 用例，可使用 <code>document-skills:webapp-testing</code> 让 AI 跑自动化用例并截图存证</li>
+<li><strong>完成判定</strong>：P0 / P1 缺陷清零；P2 / P3 有明确处理结论（修复或挂起）</li>
+</ul>
+
+<h3>4.5 阶段 DoD</h3>
+<ul>
+<li>测试报告已发布在飞书</li>
+<li>测试任务在云效置为"测试通过"</li>
+<li>未修复的 P2 / P3 已与产品达成共识</li>
+</ul>
+
+<hr>
+
+<h2>五、验收阶段（产品负责）</h2>
+
+<h3>5.1 测试环境验收</h3>
+<ul>
+<li><strong>负责人</strong>：产品</li>
+<li><strong>动作</strong>：
+<ol>
+<li>测试通过后，产品在测试环境按验收清单走查</li>
+<li>验收点不限于"功能能跑"，更看：是否符合 PRD 预期体验、文案/视觉/交互细节是否到位、异常提示是否友好</li>
+<li>问题在云效建"体验缺陷"或直接在飞书 PRD 末尾追加"验收反馈"</li>
+</ol>
+</li>
+<li><strong>Skill</strong>：<code>uat-checklist</code> — 从飞书 PRD 自动生成验收 checklist 到飞书多维表格（Bitable）
+<ul>
+<li>调用方式：<code>/uat-checklist &lt;需求标识或 PRD 飞书 URL&gt;</code>；如传父节点 URL 可批量处理其下所有子 PRD</li>
+<li>解析 PRD 的"功能清单 + 需求详述"章节，把每个模块/字段/规则拆成验收子项</li>
+<li>输出：在 PRD wiki 节点下创建子节点（标题="验收清单"），Bitable 共 8 列：模块 / 验收项 / 子项 / 期望表现 / <strong>测试环境</strong>（复选框）/ <strong>灰度环境</strong>（复选框）/ <strong>线上环境</strong>（复选框）/ 备注</li>
+<li>同一份验收清单跨三个环境复用：测试环境验收勾左列，灰度环境验收勾中列，线上回归勾右列</li>
+<li>PRD 末尾会自动追加验收清单链接，便于产品快速跳转</li>
+</ul>
+</li>
+<li><strong>完成判定</strong>：验收清单全部勾选通过，或未通过项已明确处理路径</li>
+</ul>
+
+<h3>5.2 灰度环境验收</h3>
+<ul>
+<li><strong>负责人</strong>：产品 + 研发值班</li>
+<li><strong>动作</strong>：
+<ol>
+<li>研发按灰度策略发布（按用户量 / 按租户 / 按地区）</li>
+<li>产品在灰度期内（一般 24~72 小时）观察核心指标：错误率、关键转化、用户反馈</li>
+<li>每日同步灰度状态到群</li>
+<li>异常立即决策：止血回滚 / 修复后继续 / 灰度比例回退</li>
+</ol>
+</li>
+<li><strong>完成判定</strong>：灰度期内核心指标无明显劣化，无 P0 / P1 线上缺陷</li>
+</ul>
+
+<h3>5.3 线上环境回归</h3>
+<ul>
+<li><strong>负责人</strong>：产品发起，测试执行</li>
+<li><strong>动作</strong>：
+<ol>
+<li>全量发布后，测试按"线上回归用例集"跑一遍核心链路</li>
+<li>产品同步在生产环境按验收清单复核</li>
+<li>出线上回归报告</li>
+</ol>
+</li>
+<li><strong>完成判定</strong>：线上回归全部通过；如发现问题，按"线上缺陷"流程紧急处理</li>
+</ul>
+
+<h3>5.4 云效 — 关闭需求</h3>
+<ul>
+<li><strong>负责人</strong>：产品</li>
+<li><strong>操作步骤</strong>：执行 <code>/aliyuncs:update</code>，批量把当前迭代下"已上线且回归通过"的需求置为"已关闭"</li>
+<li><strong>Skill</strong>：<code>aliyuncs:update</code>（已有）</li>
+</ul>
+
+<h3>5.5 云效 — 关闭迭代</h3>
+<ul>
+<li><strong>动作</strong>：所有需求关闭后，在云效界面把迭代状态置为"已完成"</li>
+<li><strong>迭代回顾</strong>：组织一次 30 分钟回顾会，三方对照本 SOP 检查：哪一步卡了？AI 在哪些环节真正提速？哪些 Skill 体验需要改进？</li>
+<li><strong>完成判定</strong>：迭代关闭，回顾纪要发出</li>
+</ul>
+
+<h3>5.6 阶段 DoD</h3>
+<ul>
+<li>线上回归报告归档</li>
+<li>所有需求云效状态 = 已关闭</li>
+<li>迭代云效状态 = 已完成</li>
+<li>迭代回顾已开</li>
+</ul>
+
+<hr>
+
+<h2>六、AI 工具链一览</h2>
+
+<table>
+<thead>
+<tr><th>阶段</th><th>步骤</th><th>工具 / Skill</th><th>状态</th><th>主要价值</th></tr>
+</thead>
+<tbody>
+<tr><td>需求</td><td>创建迭代</td><td><code>aliyuncs:create-iteration</code></td><td>已有</td><td>命名规范、版本号自增</td></tr>
+<tr><td>需求</td><td>创建需求</td><td><code>aliyuncs:create-requirement</code></td><td>已有</td><td>云效需求 + 飞书空 PRD 节点一键建</td></tr>
+<tr><td>需求</td><td>需求调研</td><td>Claude Code 通用对话</td><td>无需 skill</td><td>信息聚合、对比表整理</td></tr>
+<tr><td>需求</td><td>PRD 撰写</td><td><code>prd</code> + <code>prd-feishu</code></td><td>已有</td><td>统一结构、原型图自动 PNG、自动向上回链</td></tr>
+<tr><td>需求</td><td>评审一致性自检</td><td>Claude Code 通用对话</td><td>无需 skill</td><td>功能清单 vs 详述对账</td></tr>
+<tr><td>研发</td><td>创建研发任务</td><td><code>aliyuncs:create-task</code></td><td>已有</td><td>自动建前/后/测子任务</td></tr>
+<tr><td>研发</td><td>设计文档草稿</td><td>Claude Code 通用对话</td><td>无需 skill</td><td>基于 PRD + 现有代码出草稿</td></tr>
+<tr><td>研发</td><td>代码编写</td><td>Claude Code 本体</td><td>已有</td><td>Vibe Coding 主战场</td></tr>
+<tr><td>研发</td><td>代码 Review</td><td>内置 <code>/review</code></td><td>已有</td><td>合并前 AI 自检</td></tr>
+<tr><td>研发</td><td>提测单生成</td><td>Claude Code 通用对话</td><td>无需 skill</td><td>基于 PR diff 出影响范围草稿</td></tr>
+<tr><td>测试</td><td>测试用例草稿</td><td>Claude Code 通用对话</td><td>无需 skill</td><td>基于 PRD 出用例草稿</td></tr>
+<tr><td>测试</td><td>UI 自动化</td><td><code>document-skills:webapp-testing</code></td><td>已有</td><td>Playwright 自动化跑用例</td></tr>
+<tr><td>验收</td><td>验收清单</td><td><code>uat-checklist</code></td><td>已有</td><td>PRD → 飞书多维表格验收清单（8 列，三环境复选框）</td></tr>
+<tr><td>验收</td><td>关闭需求</td><td><code>aliyuncs:update</code></td><td>已有</td><td>批量状态流转</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<h2>七、附则</h2>
+
+<h3>7.1 AI 使用红线（全阶段通用）</h3>
+<ul>
+<li>不允许 AI 直接 push 主干分支</li>
+<li>不允许 AI 直接执行生产环境数据库 / 删除 / 重置类操作</li>
+<li>不允许 AI 跳过测试、CI、pre-commit hook</li>
+<li>涉及密钥 / 密码 / 客户敏感数据时必须人工确认</li>
+<li>AI 产出的代码、PRD、用例、报告必须有人类负责人 review 后才能流转下一阶段</li>
+</ul>
+
+<h3>7.2 例外流程</h3>
+<ul>
+<li>线上 P0 紧急修复：跳过完整 SOP，走单独"紧急修复"流程（PR + 至少 1 人 review + 立即灰度），事后补云效记录</li>
+<li>小于 0.5 人日的小改动：可省略设计文档、用例评审，但 PR / 测试 / 验收不能省</li>
+</ul>
+
+<h3>7.3 SOP 演进</h3>
+<p>本 SOP 每两个迭代回顾一次，沉淀的反例 / 经验同步更新到本文档，并在群内通告变更点。</p>
+
+</body>
+</html>

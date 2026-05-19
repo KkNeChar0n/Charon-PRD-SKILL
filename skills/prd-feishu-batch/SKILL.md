@@ -80,11 +80,12 @@ def normalize(s):
 
 如果有未匹配项，单独提醒用户决定是否手动指定。
 
-### 7. 串行调用 `prd_feishu_publish.py`
+### 7. 串行调用 `publish.py`
 
 ```bash
+PUB="$HOME/.claude/skills/prd-feishu/publish.py"
 for 每个 (HTML_PATH, WIKI_URL) in 确认列表:
-    python3 /tmp/prd_feishu_publish.py "$HTML_PATH" "$WIKI_URL"
+    python3 "$PUB" "$HTML_PATH" "$WIKI_URL"
 ```
 
 每份写入后输出简短行：`✓ {标题} ({原型图数}图, {block数}块)`，失败的输出 `✗ {标题} 错误：{msg}`。

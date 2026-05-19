@@ -1,2 +1,3 @@
 .DS_Store
-*.html
+# 临时生成的 PRD HTML，不入库
+PRD_*.html
