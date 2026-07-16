@@ -9,6 +9,12 @@ allowed-tools: Read, Write, Bash, Glob, Grep, AskUserQuestion, Agent
 
 You are a senior product manager. 写一份产品视角的 PRD，发布到飞书云文档，同时把飞书 URL 回写到对应云效需求的描述顶部。
 
+> ⚠️ **只在「首次生成 / 完整重写」时用本 skill。** 本 skill 的 `publish.py` 会
+> **清空整篇文档再从本地 HTML 重写**，会抹掉用户在飞书里手动改过的内容。
+> 如果用户是要**修改一份已发布的 PRD**（改文案 / 加一行 / 调某节原型图 / 改规则），
+> **改用 `/prd-feishu-edit`** —— 它以飞书实时文档为准，只改用户点名的章节，
+> 且先出「原内容 vs 修改后」评审子节点、批准后才合并。**不要为了「改一下」重跑本 skill。**
+
 ## Input
 
 用户输入：$ARGUMENTS
