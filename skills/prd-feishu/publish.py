@@ -250,6 +250,7 @@ HTML_WRAPPER = """<!DOCTYPE html>
 </body></html>"""
 
 png_paths = []
+png_dims = []  # 每张原型图 PNG 的 (宽, 高) 像素，用于设置飞书图片块显示尺寸
 for i, div in enumerate(proto_divs, 1):
     html_file = WORK / f'proto-{i}.html'
     png_file = WORK / f'proto-{i}.png'
@@ -286,6 +287,7 @@ for i, div in enumerate(proto_divs, 1):
     h = int(re.search(r'pixelHeight:\s*(\d+)', sz).group(1))
     print(f'  [{i}] OK  {png_file.name}  {w}x{h}px')
     png_paths.append(png_file)
+    png_dims.append((w, h))
 
 print(f'渲染完成: {len(png_paths)}/{len(proto_divs)}')
 
@@ -374,25 +376,77 @@ for b in blocks:
 # convert API 把 Markdown 里的 ![](placeholder-N) 按出现顺序转成 image block，
 # 顺序与我们生成 PNG 的顺序一致
 IMG_TYPE = 27
+# 按 PNG 真实比例设置图片块显示尺寸（最大宽 720px），避免飞书默认成很小的占位尺寸
+IMG_MAX_W = 720
+_img_blocks = [b for b in blocks if b.get('block_type') == IMG_TYPE]
+for b, (pw, ph) in zip(_img_blocks, png_dims):
+    if pw and ph:
+        if pw > IMG_MAX_W:
+            dw, dh = IMG_MAX_W, max(1, round(ph * IMG_MAX_W / pw))
+        else:
+            dw, dh = pw, ph
+        img = b.setdefault('image', {})
+        img['width'] = dw
+        img['height'] = dh
 image_block_ids = [b['block_id'] for b in blocks if b.get('block_type') == IMG_TYPE]
-print(f'  ✓ image block ids: {[b[:8]+"..." for b in image_block_ids]}')
+print(f'  ✓ image block ids: {[b[:8]+"..." for b in image_block_ids]} (sized by PNG ratio)')
 
-# ---------------- 9. 用 descendant 接口插入嵌套块 ----------------
+# ---------------- 9. 用 descendant 接口插入嵌套块（分批避免单批 1000 上限）----------------
 print('\n[飞书] 插入嵌套块（descendant 接口）...')
-r = requests.post(f'{BASE}/docx/v1/documents/{DOC_ID}/blocks/{DOC_ID}/descendant',
-                  headers={**HEAD, 'Content-Type': 'application/json'},
-                  json={
-                      'children_id': first_level,
-                      'descendants': blocks,
-                      'index': 0,
-                  })
-resp = r.json()
-if resp.get('code') != 0:
-    print(f'  ✗ 插入失败: {resp}')
-    sys.exit(1)
-print(f'  ✓ 已插入 {len(blocks)} 块到文档')
-# descendant API 返回的实际 block 列表（含真实 block_id）
-inserted_descendants = resp['data'].get('descendants', []) or resp['data'].get('children', [])
+
+block_by_id = {b['block_id']: b for b in blocks}
+
+def _get_subtree(bid):
+    """收集 bid 及其所有后代 block，按子先父后的顺序无所谓，飞书 API 接受扁平列表"""
+    out, stack, seen = [], [bid], set()
+    while stack:
+        x = stack.pop()
+        if x in seen:
+            continue
+        seen.add(x)
+        b = block_by_id.get(x)
+        if not b:
+            continue
+        out.append(b)
+        for cid in b.get('children', []):
+            stack.append(cid)
+    return out
+
+# 按 first_level 切分，每批 descendants <= 900
+CHUNK_LIMIT = 900
+chunks, cur_ids, cur_blocks = [], [], []
+for tid in first_level:
+    sub = _get_subtree(tid)
+    if cur_blocks and len(cur_blocks) + len(sub) > CHUNK_LIMIT:
+        chunks.append((cur_ids, cur_blocks))
+        cur_ids, cur_blocks = [], []
+    cur_ids.append(tid)
+    cur_blocks.extend(sub)
+if cur_ids:
+    chunks.append((cur_ids, cur_blocks))
+
+print(f'  分成 {len(chunks)} 批插入（每批 ≤ {CHUNK_LIMIT} 块）')
+
+inserted_descendants = []
+insert_idx = 0
+for i, (chunk_ids, chunk_blocks) in enumerate(chunks):
+    r = requests.post(f'{BASE}/docx/v1/documents/{DOC_ID}/blocks/{DOC_ID}/descendant',
+                      headers={**HEAD, 'Content-Type': 'application/json'},
+                      json={
+                          'children_id': chunk_ids,
+                          'descendants': chunk_blocks,
+                          'index': insert_idx,
+                      })
+    resp = r.json()
+    if resp.get('code') != 0:
+        print(f'  ✗ 批次 {i+1}/{len(chunks)} 插入失败: {resp}')
+        sys.exit(1)
+    print(f'  ✓ 批次 {i+1}/{len(chunks)}：插入 {len(chunk_blocks)} 块（{len(chunk_ids)} 个顶层）')
+    inserted_descendants.extend(resp['data'].get('descendants', []) or resp['data'].get('children', []))
+    insert_idx += len(chunk_ids)
+    time.sleep(0.3)
+
+print(f'  ✓ 累计插入 {len(blocks)} 块到文档')
 real_image_block_ids = [b['block_id'] for b in inserted_descendants if b.get('block_type') == IMG_TYPE]
 print(f'  ✓ 真实 image block ids: {[b[:10]+"..." for b in real_image_block_ids]}')
 if real_image_block_ids:
