@@ -14,16 +14,19 @@ prd-feishu-edit —— 对「已发布到飞书的 PRD」做外科手术式局�
   review <plan.json>
       在原 PRD 的 wiki 节点下新建一个「修改建议」子节点，写入
       每个变更的「原内容 vs 修改后」对照，供用户评审。不动原文档。
-      成功后把 review_url / review_node_token 回写进 plan.json。
+      new_markdown 里的 {+新增+} 渲染成红色字体、{-删除-} 渲染成灰色划掉，
+      一眼能看出这一节到底改了什么。成功后把 review_url 回写进 plan.json。
 
   apply  <plan.json>
       用户批准后调用：以实时文档为准，逐节定位标题锚点 → 删除该节旧块区间 →
       在原位插入新块（含原型图 PNG 上传绑定）。其余部分一律不动。
-      成功后把 review 子节点改写为「已合并」提示。
+      默认把差异标记「落地」：新增文字转普通样式、被划掉的内容真正删除，
+      原文档保持干净（plan 里加 "keep_diff_marks": true 可保留红字/划掉痕迹）。
+      成功后在 review 子节点顶部加「已合并」横幅，差异对照保留作留痕。
 
 plan.json 结构见本目录 SKILL.md。
 """
-import json, os, re, sys, time, subprocess, datetime
+import copy, json, os, re, sys, time, subprocess, datetime
 import urllib.parse as up
 from pathlib import Path
 import requests
@@ -51,6 +54,19 @@ BT_TABLE_CELL = 32
 
 HEADING_KEY = {3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
                7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9'}
+
+# ---------------- 差异标记 ----------------
+# new_markdown 里用这两对标记表示改动：
+#   {+新增的文字+}  → 渲染成红色字体
+#   {-删除的文字-}  → 渲染成灰色 + 划掉
+ADD_OPEN, ADD_CLOSE = '{+', '+}'
+DEL_OPEN, DEL_CLOSE = '{-', '-}'
+# 飞书 docx text_element_style.text_color 取值 1~7（1 红 / 2 橙 / 3 黄 / 4 绿 / 5 蓝 / 6 紫 / 7 灰）。
+# 若你的租户里显示的颜色不是想要的，改 ~/.prd-feishu/config.json 的 diff_add_color / diff_del_color。
+COLOR_ADD = int(CONFIG.get('diff_add_color', 1))
+COLOR_DEL = int(CONFIG.get('diff_del_color', 7))
+# 允许在 resolve 模式下整块删掉的块类型（正文/列表/引用/待办；标题不允许）
+DROPPABLE = {BT_TEXT, BT_BULLET, BT_ORDERED, BT_QUOTE, BT_TODO}
 
 
 def die(msg, code=1):
@@ -160,6 +176,8 @@ def elements_to_md(elements):
         style = tr.get('text_element_style', {}) or {}
         if style.get('inline_code'):
             content = f'`{content}`'
+        if style.get('strikethrough'):
+            content = f'~~{content}~~'
         if style.get('bold'):
             content = f'**{content}**'
         if style.get('italic'):
@@ -311,11 +329,140 @@ def render_protos(proto_html_files, workdir):
     return png_paths
 
 
+# ---------------- 差异标记处理 ----------------
+def check_diff_markers(markdown, where=''):
+    """转换前先做一次粗粒度配对检查，给出比 API 报错友好得多的提示。"""
+    pairs = [(ADD_OPEN, ADD_CLOSE, '新增'), (DEL_OPEN, DEL_CLOSE, '删除')]
+    for op, cl, name in pairs:
+        if markdown.count(op) != markdown.count(cl):
+            die(f'✗ {where}差异标记不配对：{name}标记 `{op}` 出现 {markdown.count(op)} 次，'
+                f'`{cl}` 出现 {markdown.count(cl)} 次。每处改动必须写成 `{op}…{cl}`。')
+
+
+def _scan_markers(content, state):
+    """把一段纯文本按标记切成 [(文本, 'add'/'del'/None), ...]，并返回退出时的状态。"""
+    parts, buf, i = [], '', 0
+
+    def flush():
+        nonlocal buf
+        if buf:
+            parts.append((buf, state))
+            buf = ''
+
+    while i < len(content):
+        two = content[i:i + 2]
+        if state is None and two == ADD_OPEN:
+            flush(); state = 'add'; i += 2
+        elif state is None and two == DEL_OPEN:
+            flush(); state = 'del'; i += 2
+        elif state == 'add' and two == ADD_CLOSE:
+            flush(); state = None; i += 2
+        elif state == 'del' and two == DEL_CLOSE:
+            flush(); state = None; i += 2
+        else:
+            buf += content[i]; i += 1
+    flush()
+    return parts, state
+
+
+def _walk_blocks(blocks, first_level):
+    """按文档顺序遍历 convert 返回的块树，返回 (有序块列表, id→块, 子→父)。"""
+    id_map = {b['block_id']: b for b in blocks}
+    ordered, parent_of, seen = [], {}, set()
+
+    def walk(bid, parent):
+        if bid in seen or bid not in id_map:
+            return
+        seen.add(bid)
+        b = id_map[bid]
+        parent_of[bid] = parent
+        ordered.append(b)
+        for c in b.get('children') or []:
+            walk(c, b)
+
+    for bid in first_level:
+        walk(bid, None)
+    for b in blocks:                      # 兜底：没被任何 children 引用到的块
+        if b['block_id'] not in seen:
+            seen.add(b['block_id'])
+            ordered.append(b)
+    return ordered, id_map, parent_of
+
+
+def _text_container(block):
+    """返回块里承载 elements 的那个子 dict（text / heading{n} / bullet / ordered / quote / todo …）。"""
+    for v in block.values():
+        if isinstance(v, dict) and isinstance(v.get('elements'), list):
+            return v
+    return None
+
+
+def process_diff_marks(blocks, first_level, mode):
+    """
+    mode='mark'    —— 把 {+…+} 渲染成红字、{-…-} 渲染成灰色划掉（用于评审子节点）。
+    mode='resolve' —— 落地成最终内容：新增文字保留为普通样式，被删文字整个丢弃（用于合并回原文档）。
+    两种模式下标记符号本身都会从正文里消失。
+    """
+    ordered, id_map, parent_of = _walk_blocks(blocks, first_level)
+    drop = set()
+    for b in ordered:
+        cont = _text_container(b)
+        if cont is None:
+            continue
+        elems = cont.get('elements') or []
+        had_text = any((e.get('text_run') or {}).get('content') for e in elems)
+        state, new_elems = None, []
+        for e in elems:
+            tr = e.get('text_run')
+            if not tr:
+                new_elems.append(e)
+                continue
+            parts, state = _scan_markers(tr.get('content', ''), state)
+            for text, st in parts:
+                if mode == 'resolve' and st == 'del':
+                    continue
+                ne = copy.deepcopy(e)
+                ne['text_run']['content'] = text
+                if mode == 'mark' and st:
+                    stl = ne['text_run'].setdefault('text_element_style', {})
+                    if st == 'add':
+                        stl['text_color'] = COLOR_ADD
+                    else:
+                        stl['strikethrough'] = True
+                        stl['text_color'] = COLOR_DEL
+                new_elems.append(ne)
+        if state is not None:
+            txt = ''.join((e.get('text_run') or {}).get('content', '') for e in elems)[:60]
+            die(f'✗ 差异标记未闭合：「{txt}」。'
+                f'`{ADD_OPEN}…{ADD_CLOSE}` / `{DEL_OPEN}…{DEL_CLOSE}` 必须在同一个段落 / 列表项 / '
+                f'标题 / 表格单元格内成对闭合，不能跨行跨格。')
+
+        now_empty = not any((e.get('text_run') or {}).get('content') for e in new_elems)
+        if mode == 'resolve' and had_text and now_empty:
+            if heading_level(b) is not None:
+                die(f'✗ 不允许整条删除小节标题：请保留标题行本身，只删标题下的内容。')
+            parent = parent_of.get(b['block_id'])
+            in_cell = parent is not None and parent.get('block_type') == BT_TABLE_CELL
+            if b.get('block_type') in DROPPABLE and not b.get('children') and not in_cell:
+                drop.add(b['block_id'])       # 整行被划掉 → 合并时连空行一起去掉
+                continue
+        cont['elements'] = new_elems or [{'text_run': {'content': ''}}]
+
+    if drop:
+        blocks[:] = [b for b in blocks if b['block_id'] not in drop]
+        first_level[:] = [i for i in first_level if i not in drop]
+        for b in blocks:
+            if b.get('children'):
+                b['children'] = [c for c in b['children'] if c not in drop]
+    return blocks, first_level
+
+
 # ---------------- 插入 Markdown（含图片上传绑定）----------------
-def insert_markdown(doc_id, markdown, index, png_paths):
+def insert_markdown(doc_id, markdown, index, png_paths, diff_mode='none'):
     """
     把一段 markdown 转 blocks 后插入到 doc_id 根块的 index 处。
     markdown 里的 ![](placeholder) 图片按出现顺序对应 png_paths。
+    diff_mode: 'mark' 渲染差异标记 / 'resolve' 落地最终内容 / 'none' 原样。
     """
     r = requests.post(f'{BASE}/docx/v1/documents/blocks/convert',
                       headers={**HEAD, 'Content-Type': 'application/json'},
@@ -326,6 +473,8 @@ def insert_markdown(doc_id, markdown, index, png_paths):
     data = d['data']
     blocks = data['blocks']
     first_level = data['first_level_block_ids']
+    if diff_mode in ('mark', 'resolve'):
+        blocks, first_level = process_diff_marks(blocks, first_level, diff_mode)
     # 表格去 merge_info
     for b in blocks:
         if b.get('block_type') == BT_TABLE:
@@ -434,7 +583,10 @@ def cmd_review(plan_path):
     md_parts = [
         f'> 🛠 本节点由 prd-feishu-edit 生成，供评审。原文档：[{orig_title}]({plan["target_url"]})',
         f'> 修改说明：{plan.get("change_summary", "（未填写）")}',
-        f'> 生成时间：{ts}。批准后运行 `apply` 合并回原文档，本节点会被改写为「已合并」提示。',
+        f'> **图例：{ADD_OPEN}红色字体{ADD_CLOSE} = 本次新增；{DEL_OPEN}划掉的灰字{DEL_CLOSE} = 本次删除；'
+        f'黑色正文 = 未改动（原样保留）。**',
+        f'> 生成时间：{ts}。批准后运行 `apply` 合并回原文档：'
+        f'红字会变成正式内容、划掉的内容会被真正删除，本节点保留作为改动留痕。',
     ]
     all_pngs = []
     for si, sec in enumerate(plan['sections'], 1):
@@ -445,11 +597,13 @@ def cmd_review(plan_path):
             die(f'✗ 变更{si}：在实时文档里找不到标题「{htext}」(H{lvl})。'
                 f'请先跑 fetch 用当前真实标题文本。')
         orig_md = render_range_md(id_map, root_children[start:end])
+        new_md = sec['new_markdown']
+        check_diff_markers(new_md, where=f'变更{si}「{htext}」的 new_markdown ')
         md_parts.append(f'\n---\n\n## 变更 {si}：{htext}\n')
-        md_parts.append('### ⬛ 原内容\n')
+        md_parts.append('### ⬛ 原内容（改之前的实时文档）\n')
         md_parts.append(orig_md if orig_md.strip() else '_（原为空）_')
-        md_parts.append('\n### 🟩 修改后\n')
-        md_parts.append(sec['new_markdown'])
+        md_parts.append('\n### 🟩 修改后（红字=新增，划掉=删除，黑字=未动）\n')
+        md_parts.append(new_md)
         # 渲染该节的原型图（若有）
         protos = sec.get('proto_html_files', [])
         if protos:
@@ -473,9 +627,9 @@ def cmd_review(plan_path):
     review_url = f'https://{info["host"]}/wiki/{review_node_token}'
     print(f'  ✓ review 子节点已建：{review_url}')
 
-    # 写入对照内容
+    # 写入对照内容（差异标记 → 红字 / 划掉）
     clear_doc(review_doc_id)
-    insert_markdown(review_doc_id, review_md, 0, all_pngs)
+    insert_markdown(review_doc_id, review_md, 0, all_pngs, diff_mode='mark')
 
     # 回写 plan
     plan['review_url'] = review_url
@@ -499,10 +653,16 @@ def cmd_apply(plan_path):
 
     work = Path(f'/tmp/prd-feishu-edit-apply-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}')
 
+    # 合并时默认「落地」差异标记：新增文字转普通样式、划掉的内容真正删除。
+    # 若想让原文档也保留红字/划掉的改动痕迹，在 plan.json 里加 "keep_diff_marks": true。
+    diff_mode = 'mark' if plan.get('keep_diff_marks') else 'resolve'
+    print(f'差异标记处理方式：{"保留红字/划掉痕迹" if diff_mode == "mark" else "落地为最终内容（推荐）"}')
+
     # 逐节处理：每处理一节都重新 load_doc（因为块区间会随插入/删除变化）
     for si, sec in enumerate(plan['sections'], 1):
         lvl = sec['heading_level']
         htext = sec['heading_text']
+        check_diff_markers(sec['new_markdown'], where=f'变更{si}「{htext}」的 new_markdown ')
         id_map, root, root_children = load_doc(doc_id)
         start, end = find_section_range(root_children, htext, lvl)
         if start is None:
@@ -527,28 +687,34 @@ def cmd_apply(plan_path):
             time.sleep(0.4)
 
         # 在原位插入新块
-        insert_markdown(doc_id, sec['new_markdown'], start, pngs)
+        insert_markdown(doc_id, sec['new_markdown'], start, pngs, diff_mode=diff_mode)
         print(f'  ✓ 变更{si} 已合并')
         time.sleep(0.4)
 
-    # 把 review 子节点改写为「已合并」提示
+    # 在 review 子节点顶部插入「已合并」横幅（保留下方的差异对照作为改动留痕）
     rn_token = plan.get('review_node_token')
     if rn_token:
         try:
             ri = resolve_url(plan['review_url'])
             review_doc_id = ri['doc_id']
-            clear_doc(review_doc_id)
             done_ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-            note = (f'# ✅ 本修改建议已合并到原文档\n\n'
-                    f'合并时间：{done_ts}\n\n'
+            note = (f'# ✅ 本修改建议已于 {done_ts} 合并到原文档\n\n'
                     f'原文档：[{plan["target_url"]}]({plan["target_url"]})\n\n'
-                    f'本节点仅作痕迹保留，可手动删除。')
+                    f'下方「原内容 / 修改后」对照原样保留，作为本次改动的留痕；'
+                    f'不需要了可手动删除本节点。\n\n---')
             insert_markdown(review_doc_id, note, 0, [])
-            print('  ✓ review 子节点已改写为「已合并」提示')
+            try:                                   # 顺手把节点标题标成已合并
+                requests.post(
+                    f'{BASE}/wiki/v2/spaces/{ri["node"]["space_id"]}/nodes/{rn_token}/update_title',
+                    headers={**HEAD, 'Content-Type': 'application/json'},
+                    json={'title': f'【已合并】{ri["node"].get("title", "修改建议")}'})
+            except Exception:
+                pass
+            print('  ✓ review 子节点已标记为「已合并」（差异对照保留）')
         except SystemExit:
-            print('  ⚠ review 子节点改写失败（不影响合并结果），可手动删除该节点')
+            print('  ⚠ review 子节点标记失败（不影响合并结果），可手动删除该节点')
         except Exception as e:
-            print(f'  ⚠ review 子节点改写异常（不影响合并结果）: {e}')
+            print(f'  ⚠ review 子节点标记异常（不影响合并结果）: {e}')
 
     print('\n' + '=' * 60)
     print('✓ 已按批准的变更合并到原文档，其余部分原样保留：')
